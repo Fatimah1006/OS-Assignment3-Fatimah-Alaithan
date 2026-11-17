@@ -32,10 +32,10 @@
 
 | Field | Your Answer |
 |-------|-------------|
-| **Full Name** | [Write your full name here] |
-| **Student ID** | [Write your student ID here] |
-| **University Email** | [yourid]@std.psau.edu.sa |
-| **GitHub Username** | [your-github-username] |
+| **Full Name** | [Fatimah mohammed AlAithan] |
+| **Student ID** | [446051500] |
+| **University Email** | [446051500]@std.psau.edu.sa |
+| **GitHub Username** | [Fatimah1006] |
 | **Repository Link** | [https://github.com/Fatimah1006/OS-Assignment3-Fatimah-Alaithan] |
  
 ---
