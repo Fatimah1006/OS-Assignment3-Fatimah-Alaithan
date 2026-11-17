@@ -61,44 +61,72 @@ class SharedStats {
     static final java.util.concurrent.atomic.AtomicInteger busyWaitPolls = new java.util.concurrent.atomic.AtomicInteger(0);
 
     // TODO Feature 2: declare the lock(s) protecting the three shared variables above here.
+    private static final ReentrantLock statsLock = new ReentrantLock();
     // Think about it: ONE lock for the three variables, or ONE lock PER variable? (you must justify it in MY_WORK.md)
-
-    public static void incrementContextSwitch() {
-        // TODO Feature 2: protect this critical section
-        int tmp = contextSwitchCount;       // 1) read
-        RaceWindow.pause();                 //    <- another thread can read the SAME value here
-        contextSwitchCount = tmp + 1;       // 2) write  (one increment is lost if someone else did the same)
+public static void incrementContextSwitch() {
+    statsLock.lock();
+    try {
+        int tmp = contextSwitchCount;
+        RaceWindow.pause();
+        contextSwitchCount = tmp + 1;
+    } finally {
+        statsLock.unlock();
     }
+}
 
     public static void incrementCompletedProcess() {
-        // TODO Feature 2: protect this critical section
+    statsLock.lock();
+    try {
         int tmp = completedProcessCount;
         RaceWindow.pause();
         completedProcessCount = tmp + 1;
+    } finally {
+        statsLock.unlock();
     }
+}
 
     public static void addServiceTime(int ms) {
-        // TODO Feature 2: protect this critical section
+    statsLock.lock();
+    try {
         long tmp = totalServiceTime;
         RaceWindow.pause();
         totalServiceTime = tmp + ms;
+    } finally {
+        statsLock.unlock();
     }
+}
+
 
     // Readers must also be protected (a read in the middle of an update is not safe either)
-    public static int getCompletedProcessCount() {
-        // TODO Feature 2: protect this read
+   public static int getCompletedProcessCount() {
+    statsLock.lock();
+    try {
         return completedProcessCount;
+    } finally {
+        statsLock.unlock();
     }
+}
+
 
     public static int getContextSwitchCount() {
-        // TODO Feature 2: protect this read
+    statsLock.lock();
+    try {
         return contextSwitchCount;
+    } finally {
+        statsLock.unlock();
     }
+}
 
-    public static long getTotalServiceTime() {
-        // TODO Feature 2: protect this read
+
+   public static long getTotalServiceTime() {
+    statsLock.lock();
+    try {
         return totalServiceTime;
+    } finally {
+        statsLock.unlock();
     }
+}
+
 }
 
 // ⚠️ THE READY QUEUE: shared by ALL the CPU threads ⚠️
@@ -112,6 +140,7 @@ class ReadyQueue {
 private final ReentrantLock queueLock = new ReentrantLock();
 
     // TODO Feature 3: declare the counting semaphore that counts the processes waiting in the ready queue here
+final java.util.concurrent.Semaphore available = new java.util.concurrent.Semaphore(0);
 
     // Add a process to the ready queue (new process, or a process that did not finish its quantum)
     public void add(Process process) {
@@ -124,6 +153,7 @@ private final ReentrantLock queueLock = new ReentrantLock();
 
 
         // TODO Feature 3: signal that one more process is available in the queue
+available.release();
 
         System.out.println(Colors.BLUE + "  ➕ " + Colors.BOLD + Colors.CYAN + process.getName() + Colors.RESET +
                 Colors.BLUE + " (Priority: " + process.getPriority() + ") added to ready queue" + Colors.RESET +
@@ -286,19 +316,22 @@ class CpuWorker extends Thread {
     public void run() {
         while (SharedStats.getCompletedProcessCount() < SharedStats.totalProcesses) {
 
-            // TODO Feature 3: replace this polling loop by a blocking wait on the counting semaphore
-            Thread thread = readyQueue.poll();
-            if (thread == null) {
-                // ⚠️ BUSY WAITING: the CPU keeps checking an empty queue instead of sleeping until
-                // a process is available. It wastes CPU time and needs the "completed == total" test above to stop.
-                SharedStats.busyWaitPolls.incrementAndGet();      // (counted for the verification block)
-                try {
-                    Thread.sleep(20);
-                } catch (InterruptedException e) {
-                    return;
-                }
-                continue;
-            }
+           try {
+    readyQueue.available.acquire();
+} catch (InterruptedException e) {
+    Thread.currentThread().interrupt();
+    return;
+}
+if (SharedStats.getCompletedProcessCount() >= SharedStats.totalProcesses) {
+    break;
+}
+
+Thread thread = readyQueue.poll();
+
+if (thread == null) {
+    continue;
+}
+ 
 
             Process process = readyQueue.processOf(thread);
             System.out.println(Colors.MAGENTA + "  ┌─ [CPU-" + cpuId + "] picks " + Colors.BRIGHT_CYAN +
@@ -318,7 +351,12 @@ class CpuWorker extends Thread {
             }
 
             // TODO Feature 3: when the LAST process has completed, wake up the CPUs that are blocked on the
+           if (SharedStats.getCompletedProcessCount() == SharedStats.totalProcesses) {
+    readyQueue.available.release(SharedStats.totalCPUs);
+}
+
             // semaphore so that they can terminate (otherwise they would wait forever!)
+
         }
     }
 }
@@ -452,3 +490,4 @@ public class SchedulerSimulationSync {
         return good;
     }
 }
+
